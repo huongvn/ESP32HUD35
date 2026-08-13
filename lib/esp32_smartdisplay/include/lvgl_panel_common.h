@@ -9,6 +9,7 @@
 static inline lv_display_t* lvgl_create_display()
 {
     lv_display_t *display = lv_display_create(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+    lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565);
     lv_color_format_t cf = lv_display_get_color_format(display);
     uint32_t px_size = lv_color_format_get_size(cf);
     uint32_t drawBufferSize = px_size * LVGL_BUFFER_PIXELS;
