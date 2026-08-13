@@ -1,20 +1,51 @@
 #include <Arduino.h>
 #include <lvgl.h>
 #include <esp32_smartdisplay.h>
+#include "ui.h"
 
-static lv_obj_t *scr;
-static int g_idx = 0;
-static uint32_t g_last_hb = 0;
+static int g_speed = 0;
+static int g_coolant = 20;
+static bool g_accel = true;
+static uint32_t g_odo = 100123;
 
-static void color_phase_timer_cb(lv_timer_t *timer)
+static void sim_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
-    static const uint32_t cols[] = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF, 0x000000};
-    static const char *names[] = {"DO", "XANH LA", "XANH DUONG", "TRANG", "DEN"};
-    lv_color_t c = lv_color_hex(cols[g_idx]);
-    lv_obj_set_style_bg_color(scr, c, LV_STATE_DEFAULT);
-    Serial.printf("[PHA %d] %s rgb=(%d,%d,%d)\n", g_idx + 1, names[g_idx], c.red, c.green, c.blue);
-    g_idx = (g_idx + 1) % 5;
+
+    if (g_accel)
+    {
+        g_speed += 2;
+        if (g_speed >= 115)
+            g_accel = false;
+    }
+    else
+    {
+        g_speed -= 2;
+        if (g_speed <= 0)
+        {
+            g_speed = 0;
+            g_accel = true;
+        }
+    }
+
+    if (g_coolant < 92)
+        g_coolant += 1;
+
+    int rpm;
+    if (g_speed < 1)
+        rpm = 850;
+    else
+    {
+        rpm = 1500 + g_speed * 45;
+        if (rpm > 6500)
+            rpm = 6500;
+    }
+
+    int gear = (g_speed < 1) ? 0 : 3; // P khi dừng, D khi chạy
+
+    g_odo += g_speed / 10;
+
+    ui_update(g_speed, g_coolant, rpm, gear, g_odo);
 }
 
 void setup()
@@ -24,22 +55,13 @@ void setup()
     lv_tick_set_cb(millis);
     smartdisplay_lcd_set_backlight(1.0f);
 
-    scr = lv_screen_active();
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0xF800), LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_STATE_DEFAULT);
-
-    lv_timer_t *t = lv_timer_create(color_phase_timer_cb, 5000, NULL);
+    ui_init();
+    lv_timer_t *t = lv_timer_create(sim_timer_cb, 100, NULL);
     lv_timer_ready(t);
-    Serial.println("READY");
 }
 
 void loop()
 {
-    if (millis() - g_last_hb >= 1000)
-    {
-        g_last_hb = millis();
-        Serial.printf("HB %lu\n", (unsigned long)millis());
-    }
     lv_timer_handler();
     delay(5);
 }
