@@ -57,7 +57,7 @@ lv_indev_t* lvgl_touch_init()
 
     // Create IO handle
     const esp_lcd_panel_io_i2c_config_t io_i2c_config = {
-        .dev_addr = 0x14,
+        .dev_addr = GT911_IO_I2C_CONFIG_DEV_ADDR,
         .control_phase_bytes = GT911_IO_I2C_CONFIG_CONTROL_PHASE_BYTES,
         .user_ctx = indev,
         .dc_bit_offset = GT911_IO_I2C_CONFIG_DC_BIT_OFFSET,
