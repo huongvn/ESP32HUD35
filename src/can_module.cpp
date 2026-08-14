@@ -15,7 +15,7 @@
 #define PID_ENGINE_COOLANT 0x05
 #define PID_ENGINE_RPM 0x0C
 #define PID_VEHICLE_SPEED 0x0D
-#define PID_INTAKE_AIR 0x0F
+#define PID_OIL_TEMP 0x5C
 #define PID_MAF 0x10
 #define PID_THROTTLE 0x11
 #define PID_ENGINE_LOAD 0x04
@@ -77,9 +77,9 @@ static void can_handle_rx(const twai_message_t *msg)
         can_update_fresh();
         portEXIT_CRITICAL(&g_can_lock);
         break;
-    case PID_INTAKE_AIR:
+    case PID_OIL_TEMP:
         portENTER_CRITICAL(&g_can_lock);
-        g_can.intake_c = msg->data[3] - 40;
+        g_can.oil_c = msg->data[3] - 40;
         g_can.last_ms = millis();
         can_update_fresh();
         portEXIT_CRITICAL(&g_can_lock);
@@ -133,7 +133,7 @@ static void can_task(void *arg)
     (void)arg;
     uint8_t pid_seq[] = {PID_ENGINE_COOLANT, PID_ENGINE_RPM, PID_ENGINE_RPM,
                          PID_VEHICLE_SPEED, PID_ENGINE_RPM, PID_ENGINE_LOAD,
-                         PID_INTAKE_AIR, PID_MAF, PID_THROTTLE, PID_FUEL_LEVEL,
+                         PID_OIL_TEMP, PID_MAF, PID_THROTTLE, PID_FUEL_LEVEL,
                          PID_BATTERY_VOLTAGE, PID_ENGINE_RPM, PID_VEHICLE_SPEED};
     uint8_t idx = 0;
     uint32_t last_req = 0;
