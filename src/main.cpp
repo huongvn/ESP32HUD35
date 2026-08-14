@@ -2,14 +2,14 @@
 #include <lvgl.h>
 #include <esp32_smartdisplay.h>
 #include "ui.h"
+#include "can_module.h"
 
-static int g_speed = 0;
-static int g_coolant = 20;
-static bool g_accel = true;
-static uint32_t g_odo = 100123;
 static lv_obj_t *touch_label;
+static lv_obj_t *can_label;
 
-static void sim_timer_cb(lv_timer_t *timer)
+static bool g_can_ok = false;
+
+static void hud_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
 
@@ -33,40 +33,21 @@ static void sim_timer_cb(lv_timer_t *timer)
         indev = lv_indev_get_next(indev);
     }
 
-    if (g_accel)
+    can_data_t can;
+    g_can_ok = can_module_get(&can);
+
+    if (g_can_ok)
     {
-        g_speed += 2;
-        if (g_speed >= 115)
-            g_accel = false;
+        lv_label_set_text(can_label, "CAN OK");
+        lv_obj_set_style_text_color(can_label, lv_color_hex(0x00FF00), 0);
+        ui_update(can.speed, can.coolant_c, can.rpm, 0, 0);
     }
     else
     {
-        g_speed -= 2;
-        if (g_speed <= 0)
-        {
-            g_speed = 0;
-            g_accel = true;
-        }
+        lv_label_set_text(can_label, "NO CAN");
+        lv_obj_set_style_text_color(can_label, lv_color_hex(0xFF0000), 0);
+        ui_update(0, 20, 0, 0, 0);
     }
-
-    if (g_coolant < 92)
-        g_coolant += 1;
-
-    int rpm;
-    if (g_speed < 1)
-        rpm = 850;
-    else
-    {
-        rpm = 1500 + g_speed * 45;
-        if (rpm > 6500)
-            rpm = 6500;
-    }
-
-    int gear = (g_speed < 1) ? 0 : 3; // P khi dừng, D khi chạy
-
-    g_odo += g_speed / 10;
-
-    ui_update(g_speed, g_coolant, rpm, gear, g_odo);
 }
 
 void setup()
@@ -84,7 +65,14 @@ void setup()
     lv_obj_align(touch_label, LV_ALIGN_BOTTOM_MID, 0, -6);
     lv_label_set_text(touch_label, "");
 
-    lv_timer_t *t = lv_timer_create(sim_timer_cb, 100, NULL);
+    can_label = lv_label_create(lv_screen_active());
+    lv_obj_set_style_text_font(can_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(can_label, LV_ALIGN_TOP_LEFT, 4, 4);
+    lv_label_set_text(can_label, "NO CAN");
+
+    can_module_init();
+
+    lv_timer_t *t = lv_timer_create(hud_timer_cb, 100, NULL);
     lv_timer_ready(t);
 }
 
