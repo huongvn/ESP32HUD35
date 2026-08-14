@@ -17,7 +17,7 @@
 #define PID_VEHICLE_SPEED 0x0D
 
 static can_data_t g_can = {0};
-static volatile uint32_t g_alerts = 0;
+static volatile uint32_t g_rx_count = 0;
 
 static void can_update_fresh(void)
 {
@@ -85,7 +85,21 @@ static void can_task(void *arg)
 
         twai_message_t msg;
         if (twai_receive(&msg, pdMS_TO_TICKS(20)) == ESP_OK)
+        {
+            g_rx_count++;
             can_handle_rx(&msg);
+        }
+
+        static uint32_t last_status = 0;
+        if ((millis() - last_status) >= 3000)
+        {
+            twai_status_info_t st;
+            if (twai_get_status_info(&st) == ESP_OK)
+                Serial.printf("CAN: data=%s rx=%u state=%d tx_fail=%u bus_err=%u\n",
+                              g_can.fresh ? "OK" : "NO", g_rx_count, st.state,
+                              st.tx_failed_count, st.bus_error_count);
+            last_status = millis();
+        }
 
         can_update_fresh();
     }
