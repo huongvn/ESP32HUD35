@@ -18,6 +18,7 @@ static void hud_timer_cb(lv_timer_t *timer)
                   can.oil_c, can.throttle_pct, can.batt_mv);
     else
         ui_update(0, 0, 0, 0, 0, 0, 0);
+    ui_set_dtc(can.dtc_count, can.dtc_codes);
 
     wifi_info_t wi;
     wifi_module_get(&wi);

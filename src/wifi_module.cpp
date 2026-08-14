@@ -78,6 +78,10 @@ static void wifi_task(void *arg)
 {
     (void)arg;
 
+    /* set timezone first so restored flash time is shown in local TZ */
+    configTime(TZ_OFFSET_SEC, 0, "pool.ntp.org", "time.nist.gov");
+    sntp_set_sync_interval(60000);
+
     /* restore last known time from flash so clock works before/without WiFi */
     Preferences p;
     if (p.begin(NVS_NS, true))

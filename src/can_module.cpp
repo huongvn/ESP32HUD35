@@ -22,6 +22,9 @@
 #define PID_FUEL_LEVEL 0x2F
 #define PID_BATTERY_VOLTAGE 0x42
 
+/* service 03 (read DTCs), no PID byte in request */
+#define OBD_SVC_READ_DTC 0x03
+
 static can_data_t g_can = {0};
 static portMUX_TYPE g_can_lock = portMUX_INITIALIZER_UNLOCKED;
 static volatile uint32_t g_rx_count = 0;
@@ -44,6 +47,28 @@ static void can_handle_rx(const twai_message_t *msg)
         return;
 
     /* OBD response: PCI byte, then 0x41 (mode 1 response), PID, data */
+    if (msg->data[1] == 0x43)
+    {
+        /* DTC response (mode 03): 43 0N DTC DTC ... */
+        int n = msg->data[2];
+        if (n > CAN_DTC_MAX) n = CAN_DTC_MAX;
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.dtc_count = n;
+        for (int i = 0; i < n; i++)
+        {
+            uint8_t hi = msg->data[3 + i * 2];
+            uint8_t lo = msg->data[4 + i * 2];
+            g_can.dtc_codes[i] = (hi << 8) | lo;
+        }
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        Serial.printf("CAN: DTC count=%d\n", n);
+        for (int i = 0; i < n; i++)
+            Serial.printf("CAN:   DTC[%d]=%03X\n", i, g_can.dtc_codes[i]);
+        return;
+    }
+
     if (msg->data[1] != 0x41)
         return;
 
@@ -128,6 +153,16 @@ static void can_send_pid(uint8_t pid)
     twai_transmit(&msg, pdMS_TO_TICKS(10));
 }
 
+static void can_send_dtc(void)
+{
+    twai_message_t msg = {0};
+    msg.identifier = CAN_ID_REQUEST;
+    msg.data_length_code = 8;
+    msg.data[0] = 0x02;
+    msg.data[1] = OBD_SVC_READ_DTC;
+    twai_transmit(&msg, pdMS_TO_TICKS(10));
+}
+
 static void can_task(void *arg)
 {
     (void)arg;
@@ -137,6 +172,7 @@ static void can_task(void *arg)
                          PID_BATTERY_VOLTAGE, PID_ENGINE_RPM, PID_VEHICLE_SPEED};
     uint8_t idx = 0;
     uint32_t last_req = 0;
+    uint32_t last_dtc = 0;
 
     for (;;)
     {
@@ -145,6 +181,13 @@ static void can_task(void *arg)
             can_send_pid(pid_seq[idx % sizeof(pid_seq)]);
             last_req = millis();
             idx++;
+        }
+
+        /* request DTCs once per second */
+        if ((millis() - last_dtc) >= 1000)
+        {
+            can_send_dtc();
+            last_dtc = millis();
         }
 
         twai_message_t msg;

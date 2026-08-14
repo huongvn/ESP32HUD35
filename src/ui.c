@@ -1,4 +1,5 @@
 #include <lvgl.h>
+#include <stdio.h>
 #include <string.h>
 #include "ui.h"
 
@@ -18,13 +19,16 @@
 #define Z4_END 480   /* footer: wifi info */
 
 static lv_obj_t *scr_main;
-static lv_obj_t *can_led;
+static lv_obj_t *can_bars[4];
 static lv_obj_t *clock_label;
 static lv_obj_t *spd_label;
 static lv_obj_t *coolant_arc, *coolant_val, *coolant_unit;
 static lv_obj_t *batt_body, *batt_fill, *batt_nub, *batt_val, *batt_unit;
 static lv_obj_t *rpm_val, *load_val, *oil_val, *thr_val;
 static lv_obj_t *wifi_label;
+static lv_obj_t *dtc_label;
+
+#define COL_YELLOW lv_color_hex(0xD9C100)
 
 static lv_obj_t *label_center(lv_obj_t *parent, int y, const lv_font_t *font,
                               lv_color_t color, int off_x, const char *text)
@@ -184,15 +188,18 @@ void ui_init(void)
     lv_obj_set_style_pad_all(scr_main, 0, 0);
 
     /* ============ ZONE 1: top bar ============ */
-    can_led = lv_obj_create(scr_main);
-    lv_obj_set_size(can_led, 14, 14);
-    lv_obj_align(can_led, LV_ALIGN_TOP_LEFT, 8, 10);
-    lv_obj_remove_flag(can_led, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_radius(can_led, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(can_led, COL_GRAY, 0);
-    lv_obj_set_style_bg_opa(can_led, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(can_led, 0, 0);
-    lv_obj_set_style_pad_all(can_led, 0, 0);
+    for (int i = 0; i < 4; i++)
+    {
+        can_bars[i] = lv_obj_create(scr_main);
+        lv_obj_set_size(can_bars[i], 4, 6 + i * 4);
+        lv_obj_align(can_bars[i], LV_ALIGN_TOP_LEFT, 8 + i * 6, 14 - i * 2);
+        lv_obj_remove_flag(can_bars[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_radius(can_bars[i], 1, 0);
+        lv_obj_set_style_bg_color(can_bars[i], COL_GRAY, 0);
+        lv_obj_set_style_bg_opa(can_bars[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(can_bars[i], 0, 0);
+        lv_obj_set_style_pad_all(can_bars[i], 0, 0);
+    }
 
     clock_label = label_center(scr_main, 10, &lv_font_montserrat_28, COL_WHITE, 0, "--:--");
     lv_obj_set_width(clock_label, 120);
@@ -217,12 +224,19 @@ void ui_init(void)
     sub_readout(280, "THR", &thr_val);
     divider(Z3_END - 2);
 
-    /* ============ ZONE 4: wifi info ============ */
+    /* ============ ZONE 4: wifi info (left) + DTC (right) ============ */
     wifi_label = lv_label_create(scr_main);
     lv_obj_set_style_text_font(wifi_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(wifi_label, COL_GRAY, 0);
     lv_obj_align(wifi_label, LV_ALIGN_BOTTOM_LEFT, 12, -10);
     lv_label_set_text(wifi_label, LV_SYMBOL_WIFI " --");
+
+    dtc_label = lv_label_create(scr_main);
+    lv_obj_set_style_text_font(dtc_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(dtc_label, COL_YELLOW, 0);
+    lv_obj_set_style_text_align(dtc_label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(dtc_label, LV_ALIGN_BOTTOM_RIGHT, -12, -10);
+    lv_label_set_text(dtc_label, "");
     divider(Z4_END - 2);
 }
 
@@ -297,7 +311,33 @@ void ui_set_status(const ui_status_t *st)
 
 void ui_set_can_status(bool ok)
 {
-    if (!can_led)
+    for (int i = 0; i < 4; i++)
+        lv_obj_set_style_bg_color(can_bars[i], ok ? COL_BLUE : COL_GRAY, 0);
+}
+
+void ui_set_dtc(uint8_t count, const uint16_t *codes)
+{
+    if (count == 0 || !codes)
+    {
+        lv_label_set_text(dtc_label, "");
         return;
-    lv_obj_set_style_bg_color(can_led, ok ? COL_BLUE : COL_GRAY, 0);
+    }
+
+    static char buf[64];
+    buf[0] = '\0';
+    int pos = 0;
+    for (int i = 0; i < count && i < CAN_DTC_MAX; i++)
+    {
+        const char *letter = "P";
+        switch ((codes[i] >> 14) & 0x3)
+        {
+        case 1: letter = "C"; break;
+        case 2: letter = "B"; break;
+        case 3: letter = "U"; break;
+        default: letter = "P"; break;
+        }
+        int num = codes[i] & 0x3FFF;
+        pos += snprintf(buf + pos, sizeof(buf) - pos, "%s%03X  ", letter, num);
+    }
+    lv_label_set_text(dtc_label, buf);
 }
