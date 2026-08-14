@@ -17,21 +17,14 @@
 #define COL_BLUE    lv_color_hex(0x2196F3)
 
 static lv_obj_t *scr;
-static lv_obj_t *turn_left;
-static lv_obj_t *turn_right;
-static lv_obj_t *odo_label;
-static lv_obj_t *gear_label;
-static lv_obj_t *speed_label;
-static lv_obj_t *kmh_label;
-static lv_obj_t *speed_arc;
-static lv_obj_t *coolant_arc;
-static lv_obj_t *coolant_val;
-static lv_obj_t *coolant_unit;
-static lv_obj_t *rpm_arc;
-static lv_obj_t *rpm_val;
-static lv_obj_t *rpm_unit;
+static lv_obj_t *spd_label;
+static lv_obj_t *rpm_label;
 
-static lv_obj_t *label_full(int y, const lv_font_t *font, lv_color_t color, int off_x, const char *text)
+static lv_obj_t *coolant_arc, *coolant_val, *coolant_unit;
+static lv_obj_t *batt_arc, *batt_val, *batt_unit;
+static lv_obj_t *aux_label;
+
+static lv_obj_t *label_center(int y, const lv_font_t *font, lv_color_t color, int off_x, const char *text)
 {
     lv_obj_t *l = lv_label_create(scr);
     lv_obj_set_width(l, SCREEN_W);
@@ -79,73 +72,72 @@ static lv_obj_t *redzone_create(int cx, int cy, int size, int thick,
     return arc;
 }
 
+/* Big center gauge: title above, big value in middle */
+static void big_gauge(int cx, const char *title, lv_obj_t **arc_out,
+                      lv_obj_t **val_out, lv_obj_t **unit_out)
+{
+    int off = cx - SCREEN_W / 2;
+    label_center(96, &lv_font_montserrat_14, COL_DIM, off, title);
+    redzone_create(cx, 230, 140, 12, 337, 405, 80);
+    lv_obj_t *arc = arc_create(cx, 230, 140, 12, 135, 405, 80, COL_ARCBG, COL_GREEN);
+    lv_obj_t *val = label_center(212, &lv_font_montserrat_48, COL_WHITE, off, "--");
+    lv_obj_set_width(val, 160);
+    lv_obj_t *unit = label_center(268, &lv_font_montserrat_14, COL_DIM, off, "");
+    *arc_out = arc;
+    *val_out = val;
+    *unit_out = unit;
+}
+
 void ui_init(void)
 {
     scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, COL_BG, LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_STATE_DEFAULT);
+    lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(scr, 0, 0);
 
-    // Top status bar
-    turn_left = lv_label_create(scr);
-    lv_obj_set_style_text_font(turn_left, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(turn_left, COL_DIM, 0);
-    lv_obj_align(turn_left, LV_ALIGN_TOP_LEFT, 24, 14);
-    lv_label_set_text(turn_left, LV_SYMBOL_LEFT);
+    // Top bar: speed (right)
+    spd_label = lv_label_create(scr);
+    lv_obj_set_style_text_font(spd_label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(spd_label, COL_WHITE, 0);
+    lv_obj_set_style_text_align(spd_label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(spd_label, LV_ALIGN_TOP_RIGHT, -8, 12);
+    lv_label_set_text(spd_label, "0 km/h");
 
-    turn_right = lv_label_create(scr);
-    lv_obj_set_style_text_font(turn_right, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(turn_right, COL_DIM, 0);
-    lv_obj_align(turn_right, LV_ALIGN_TOP_RIGHT, -24, 14);
-    lv_label_set_text(turn_right, LV_SYMBOL_RIGHT);
+    // Two big gauges: COOL (left), BATT (right)
+    big_gauge(85, "COOLANT", &coolant_arc, &coolant_val, &coolant_unit);
+    big_gauge(235, "BATTERY", &batt_arc, &batt_val, &batt_unit);
 
-    odo_label = label_full(18, &lv_font_montserrat_20, COL_DIM, 0, "ODO 000000 km");
-
-    // Gear indicator
-    gear_label = label_full(64, &lv_font_montserrat_28, COL_CYAN, 0, "P");
-
-    // Big speed arc (270 deg gauge)
-    redzone_create(160, 250, 258, 14, 337, 405, 240);          // red zone >180 km/h
-    speed_arc = arc_create(160, 250, 258, 14, 135, 405, 240, COL_ARCBG, COL_CYAN);
-
-    speed_label = label_full(212, &lv_font_montserrat_48, COL_WHITE, 0, "0");
-    kmh_label = label_full(268, &lv_font_montserrat_20, COL_DIM, 0, "km/h");
-
-    // Coolant gauge (left)
-    label_full(384, &lv_font_montserrat_14, COL_DIM, -75, "COOLANT");
-    redzone_create(85, 438, 100, 10, 337, 405, 80);            // >100C
-    coolant_arc = arc_create(85, 438, 100, 10, 135, 405, 80, COL_ARCBG, COL_GREEN);
-    coolant_val = label_full(398, &lv_font_montserrat_28, COL_WHITE, -75, "00");
-    coolant_unit = label_full(428, &lv_font_montserrat_14, COL_DIM, -75, "C");
-
-    // RPM gauge (right)
-    label_full(384, &lv_font_montserrat_14, COL_DIM, 75, "RPM");
-    redzone_create(235, 438, 100, 10, 337, 405, 80);           // redline >6k
-    rpm_arc = arc_create(235, 438, 100, 10, 135, 405, 80, COL_ARCBG, COL_GREEN);
-    rpm_val = label_full(398, &lv_font_montserrat_28, COL_WHITE, 75, "0.0");
-    rpm_unit = label_full(428, &lv_font_montserrat_14, COL_DIM, 75, "x1000");
+    // Bottom center: RPM + intake/throttle
+    rpm_label = label_center(404, &lv_font_montserrat_28, COL_WHITE, 0, "RPM 0");
+    aux_label = label_center(444, &lv_font_montserrat_14, COL_DIM, 0, "IAT --C  THR --%");
 }
 
-void ui_update(int speed_kmh, int coolant_c, int rpm, int gear, uint32_t odo_km)
+void ui_update(int speed_kmh, int coolant_c, int rpm, int gear, uint32_t odo_km,
+               int load_pct, int intake_c, int throttle_pct, int batt_mv)
 {
     static const char gear_chars[] = {'P', 'R', 'N', 'D', 'S'};
-
-    // Speed
-    lv_label_set_text_fmt(speed_label, "%d", speed_kmh);
-    if (speed_kmh > 240) speed_kmh = 240;
-    lv_arc_set_value(speed_arc, speed_kmh);
-
-    // Gear
-    if (gear < 0) gear = 0;
-    if (gear > 4) gear = 3;
-    lv_label_set_text_fmt(gear_label, "%c", gear_chars[gear]);
+    (void)gear_chars;
 
     // Odometer
-    lv_label_set_text_fmt(odo_label, "ODO %06lu km", (unsigned long)odo_km);
+    (void)odo_km;
 
-    // Coolant
-    if (coolant_c > 120) coolant_c = 120;
-    lv_label_set_text_fmt(coolant_val, "%02d", coolant_c);
-    lv_arc_set_value(coolant_arc, coolant_c - 40);
+    // Speed (small)
+    lv_label_set_text_fmt(spd_label, "%d km/h", speed_kmh);
+
+    // RPM (small)
+    lv_label_set_text_fmt(rpm_label, "RPM %u", rpm);
+
+    // Intake + Throttle
+    lv_label_set_text_fmt(aux_label, "IAT %dC  THR %d%%", intake_c, throttle_pct);
+
+    // Coolant (big gauge, 40-120C -> 0-80)
+    lv_label_set_text_fmt(coolant_val, "%d", coolant_c);
+    lv_label_set_text(coolant_unit, "C");
+    int cool_v = coolant_c - 40;
+    if (cool_v < 0) cool_v = 0;
+    if (cool_v > 80) cool_v = 80;
+    lv_arc_set_value(coolant_arc, cool_v);
     lv_color_t ccol = COL_GREEN;
     if (coolant_c < 60) ccol = COL_BLUE;
     else if (coolant_c >= 110) ccol = COL_RED;
@@ -153,13 +145,27 @@ void ui_update(int speed_kmh, int coolant_c, int rpm, int gear, uint32_t odo_km)
     lv_obj_set_style_arc_color(coolant_arc, ccol, LV_PART_INDICATOR);
     lv_obj_set_style_text_color(coolant_val, ccol, 0);
 
-    // RPM
-    if (rpm < 0) rpm = 0;
-    if (rpm > 8000) rpm = 8000;
-    lv_label_set_text_fmt(rpm_val, "%d.%d", rpm / 1000, (rpm % 1000) / 100);
-    lv_arc_set_value(rpm_arc, rpm / 100);
-    lv_color_t rcol = COL_GREEN;
-    if (rpm >= 6000) rcol = COL_RED;
-    else if (rpm >= 5000) rcol = COL_ORANGE;
-    lv_obj_set_style_arc_color(rpm_arc, rcol, LV_PART_INDICATOR);
+    // Battery (big gauge, 9-16V -> 0-80)
+    if (batt_mv <= 0)
+    {
+        lv_label_set_text(batt_val, "0.0");
+        lv_label_set_text(batt_unit, "V");
+        lv_arc_set_value(batt_arc, 0);
+        lv_obj_set_style_arc_color(batt_arc, COL_ORANGE, LV_PART_INDICATOR);
+        lv_obj_set_style_text_color(batt_val, COL_ORANGE, 0);
+        goto batt_done;
+    }
+    if (batt_mv < 9000) batt_mv = 9000;
+    if (batt_mv > 16000) batt_mv = 16000;
+    int batt_v = (batt_mv - 9000) * 80 / 7000;
+    lv_label_set_text_fmt(batt_val, "%d.%d", batt_mv / 1000, (batt_mv % 1000) / 100);
+    lv_label_set_text(batt_unit, "V");
+    lv_arc_set_value(batt_arc, batt_v);
+    lv_color_t bcol = COL_ORANGE;
+    if (batt_mv >= 13000) bcol = COL_GREEN;
+    else if (batt_mv < 11500) bcol = COL_RED;
+    lv_obj_set_style_arc_color(batt_arc, bcol, LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(batt_val, bcol, 0);
+batt_done:
+    (void)0;
 }

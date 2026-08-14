@@ -15,40 +15,102 @@
 #define PID_ENGINE_COOLANT 0x05
 #define PID_ENGINE_RPM 0x0C
 #define PID_VEHICLE_SPEED 0x0D
+#define PID_INTAKE_AIR 0x0F
+#define PID_MAF 0x10
+#define PID_THROTTLE 0x11
+#define PID_ENGINE_LOAD 0x04
+#define PID_FUEL_LEVEL 0x2F
+#define PID_BATTERY_VOLTAGE 0x42
 
 static can_data_t g_can = {0};
+static portMUX_TYPE g_can_lock = portMUX_INITIALIZER_UNLOCKED;
 static volatile uint32_t g_rx_count = 0;
+
+static volatile int g_state = -1;
+static volatile uint32_t g_tx_fail = 0;
+static volatile uint32_t g_bus_err = 0;
 
 static void can_update_fresh(void)
 {
+    portENTER_CRITICAL(&g_can_lock);
     g_can.fresh = (millis() - g_can.last_ms) < CAN_FRESH_MS;
+    portEXIT_CRITICAL(&g_can_lock);
 }
 
 static void can_handle_rx(const twai_message_t *msg)
 {
-    if (msg->identifier != CAN_ID_RESPONSE || msg->data_length_code < 6)
+    /* OBD-II response IDs: 0x7E8 - 0x7EF (ISO 15765-4) */
+    if (msg->identifier < 0x7E8 || msg->identifier > 0x7EF || msg->data_length_code < 4)
         return;
 
-    /* OBD response: [2][0x41][PID][data...] */
-    if (msg->data[0] != 0x02 || msg->data[1] != 0x41)
+    /* OBD response: PCI byte, then 0x41 (mode 1 response), PID, data */
+    if (msg->data[1] != 0x41)
         return;
 
     switch (msg->data[2])
     {
     case PID_ENGINE_RPM:
+        portENTER_CRITICAL(&g_can_lock);
         g_can.rpm = (msg->data[3] * 256U + msg->data[4]) / 4U;
         g_can.last_ms = millis();
         can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
         break;
     case PID_VEHICLE_SPEED:
+        portENTER_CRITICAL(&g_can_lock);
         g_can.speed = msg->data[3];
         g_can.last_ms = millis();
         can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
         break;
     case PID_ENGINE_COOLANT:
+        portENTER_CRITICAL(&g_can_lock);
         g_can.coolant_c = msg->data[3] - 40;
         g_can.last_ms = millis();
         can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        break;
+    case PID_ENGINE_LOAD:
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.load_pct = msg->data[3] * 100U / 255U;
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        break;
+    case PID_INTAKE_AIR:
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.intake_c = msg->data[3] - 40;
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        break;
+    case PID_MAF:
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.maf_gs = msg->data[3] * 256U + msg->data[4];
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        break;
+    case PID_THROTTLE:
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.throttle_pct = msg->data[3] * 100U / 255U;
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        break;
+    case PID_FUEL_LEVEL:
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.fuel_pct = msg->data[3] * 100U / 255U;
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
+        break;
+    case PID_BATTERY_VOLTAGE:
+        portENTER_CRITICAL(&g_can_lock);
+        g_can.batt_mv = msg->data[3] * 256U + msg->data[4];
+        g_can.last_ms = millis();
+        can_update_fresh();
+        portEXIT_CRITICAL(&g_can_lock);
         break;
     default:
         break;
@@ -70,7 +132,9 @@ static void can_task(void *arg)
 {
     (void)arg;
     uint8_t pid_seq[] = {PID_ENGINE_COOLANT, PID_ENGINE_RPM, PID_ENGINE_RPM,
-                         PID_VEHICLE_SPEED, PID_ENGINE_RPM};
+                         PID_VEHICLE_SPEED, PID_ENGINE_RPM, PID_ENGINE_LOAD,
+                         PID_INTAKE_AIR, PID_MAF, PID_THROTTLE, PID_FUEL_LEVEL,
+                         PID_BATTERY_VOLTAGE, PID_ENGINE_RPM, PID_VEHICLE_SPEED};
     uint8_t idx = 0;
     uint32_t last_req = 0;
 
@@ -95,9 +159,14 @@ static void can_task(void *arg)
         {
             twai_status_info_t st;
             if (twai_get_status_info(&st) == ESP_OK)
+            {
+                g_state = st.state;
+                g_tx_fail = st.tx_failed_count;
+                g_bus_err = st.bus_error_count;
                 Serial.printf("CAN: data=%s rx=%u state=%d tx_fail=%u bus_err=%u\n",
                               g_can.fresh ? "OK" : "NO", g_rx_count, st.state,
                               st.tx_failed_count, st.bus_error_count);
+            }
             last_status = millis();
         }
 
@@ -129,7 +198,22 @@ bool can_module_get(can_data_t *out)
 {
     if (!out)
         return false;
-    *out = g_can;
+    portENTER_CRITICAL(&g_can_lock);
     can_update_fresh();
-    return g_can.fresh;
+    *out = g_can;
+    bool fresh = g_can.fresh;
+    portEXIT_CRITICAL(&g_can_lock);
+    return fresh;
+}
+
+void can_module_get_debug(uint32_t *rx, int *state, uint32_t *tx_fail, uint32_t *bus_err)
+{
+    if (rx)
+        *rx = g_rx_count;
+    if (state)
+        *state = g_state;
+    if (tx_fail)
+        *tx_fail = g_tx_fail;
+    if (bus_err)
+        *bus_err = g_bus_err;
 }
