@@ -2,15 +2,47 @@
 #include <WiFi.h>
 #include "time.h"
 #include <esp_sntp.h>
+#include <Preferences.h>
 #include "wifi_module.h"
 #include "wifi_config.h"
 
 #define TZ_OFFSET_SEC (7 * 3600) /* UTC+7 */
 
+#define NVS_NS   "hudtime"
+#define NVS_KEY  "epoch"
+
 static volatile bool g_connected = false;
 static volatile bool g_time_valid = false;
-static volatile uint8_t g_hour = 0;
-static volatile uint8_t g_minute = 0;
+
+/* running clock: now_epoch = g_epoch_base + (millis()-g_base_ms)/1000 */
+static volatile time_t g_epoch_base = 0;
+static volatile uint32_t g_base_ms = 0;
+
+static void time_store_epoch(time_t now)
+{
+    Preferences p;
+    if (p.begin(NVS_NS, false))
+    {
+        p.putLong(NVS_KEY, (int32_t)now);
+        p.end();
+    }
+}
+
+/* compute current epoch from base + uptime */
+static time_t now_epoch(void)
+{
+    if (!g_time_valid)
+        return 0;
+    uint32_t elapsed = (uint32_t)(millis() - g_base_ms);
+    return g_epoch_base + (time_t)(elapsed / 1000);
+}
+
+static void time_set(time_t now)
+{
+    g_epoch_base = now;
+    g_base_ms = millis();
+    g_time_valid = true;
+}
 
 static void ntp_sync(void)
 {
@@ -30,23 +62,35 @@ static void ntp_sync(void)
 
     if (now > 1000000000)
     {
+        time_set(now);
+        time_store_epoch(now);
         struct tm ti;
         localtime_r(&now, &ti);
-        g_hour = ti.tm_hour;
-        g_minute = ti.tm_min;
-        g_time_valid = true;
-        Serial.printf("NTP: time %02u:%02u\n", g_hour, g_minute);
+        Serial.printf("NTP: time %02u:%02u\n", ti.tm_hour, ti.tm_min);
     }
     else
     {
-        g_time_valid = false;
-        Serial.println("NTP: fail");
+        Serial.println("NTP: fail (using stored clock)");
     }
 }
 
 static void wifi_task(void *arg)
 {
     (void)arg;
+
+    /* restore last known time from flash so clock works before/without WiFi */
+    Preferences p;
+    if (p.begin(NVS_NS, true))
+    {
+        int32_t saved = p.getLong(NVS_KEY, 0);
+        p.end();
+        if (saved > 1000000000)
+        {
+            time_set((time_t)saved);
+            Serial.println("TIME: restored from flash");
+        }
+    }
+
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     WiFi.setAutoReconnect(true);
@@ -65,22 +109,24 @@ static void wifi_task(void *arg)
         Serial.printf("WIFI: connected %s (%s)\n", WIFI_SSID,
                       WiFi.localIP().toString().c_str());
         ntp_sync();
-        /* keep WiFi alive for potential re-sync; NTP is enough */
-        vTaskDelay(pdMS_TO_TICKS(600000)); /* re-sync every 10 min */
         while (true)
         {
+            vTaskDelay(pdMS_TO_TICKS(600000)); /* re-sync every 10 min */
             ntp_sync();
-            vTaskDelay(pdMS_TO_TICKS(600000));
         }
     }
     else
     {
         Serial.printf("WIFI: fail to connect %s\n", WIFI_SSID);
         g_connected = false;
-        g_time_valid = false;
     }
 
-    vTaskDelete(NULL);
+    /* keep running clock alive (no WiFi) */
+    while (true)
+    {
+        vTaskDelay(pdMS_TO_TICKS(60000));
+        time_store_epoch(now_epoch());
+    }
 }
 
 void wifi_module_init(void)
@@ -92,9 +138,22 @@ bool wifi_module_get(wifi_info_t *out)
 {
     if (!out)
         return false;
-    out->hour = g_hour;
-    out->minute = g_minute;
-    out->time_valid = g_time_valid;
+
+    if (g_time_valid)
+    {
+        time_t now = now_epoch();
+        struct tm ti;
+        localtime_r(&now, &ti);
+        out->hour = ti.tm_hour;
+        out->minute = ti.tm_min;
+        out->time_valid = true;
+    }
+    else
+    {
+        out->hour = 0;
+        out->minute = 0;
+        out->time_valid = false;
+    }
     out->connected = g_connected;
     out->ssid = g_connected ? WIFI_SSID : NULL;
     return g_connected;
