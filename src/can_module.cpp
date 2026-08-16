@@ -29,6 +29,11 @@ static can_data_t g_can = {0};
 static portMUX_TYPE g_can_lock = portMUX_INITIALIZER_UNLOCKED;
 static volatile uint32_t g_rx_count = 0;
 
+/* supported-PID bitmaps (SAE J1979): groups 0x00, 0x20, 0x40, 0x60 */
+static uint8_t g_supported[4][4];
+static bool g_sup_got[4];
+static bool g_sup_logged;
+
 static volatile int g_state = -1;
 static volatile uint32_t g_tx_fail = 0;
 static volatile uint32_t g_bus_err = 0;
@@ -38,6 +43,60 @@ static void can_update_fresh(void)
     portENTER_CRITICAL(&g_can_lock);
     g_can.fresh = (millis() - g_can.last_ms) < CAN_FRESH_MS;
     portEXIT_CRITICAL(&g_can_lock);
+}
+
+/* check whether a Mode-01 PID is supported from the received bitmaps */
+static bool pid_supported(uint8_t pid)
+{
+    if (pid == 0 || pid > 0x80)
+        return false;
+    int group = (pid - 1) / 32;      /* 0..3 */
+    if (!g_sup_got[group])
+        return false;
+    int idx = (pid - 1) / 8;         /* byte within group bitmap */
+    int bit = 7 - ((pid - 1) % 8);   /* bit within byte */
+    return (g_supported[group][idx] & (1 << bit)) != 0;
+}
+
+static const char *pid_name(uint8_t pid)
+{
+    switch (pid)
+    {
+    case 0x01: return "monitor status";
+    case 0x03: return "fuel system status";
+    case 0x04: return "engine load";
+    case 0x05: return "coolant temp";
+    case 0x06: return "fuel trim ST B1";
+    case 0x07: return "fuel trim LT B1";
+    case 0x0B: return "intake MAP";
+    case 0x0C: return "engine RPM";
+    case 0x0D: return "vehicle speed";
+    case 0x0E: return "timing advance";
+    case 0x0F: return "intake air temp";
+    case 0x10: return "MAF";
+    case 0x11: return "throttle pos";
+    case 0x1C: return "OBD standard";
+    case 0x21: return "dist w/ MIL";
+    case 0x2F: return "fuel level";
+    case 0x42: return "battery voltage";
+    case 0x46: return "ambient air temp";
+    case 0x5C: return "oil temp";
+    default: return "?";
+    }
+}
+
+static void can_log_supported(void)
+{
+    if (g_sup_logged)
+        return;
+    g_sup_logged = true;
+    Serial.println("CAN: supported PIDs (Mode 01):");
+    for (uint8_t pid = 1; pid <= 0x80; pid++)
+    {
+        if (pid_supported(pid))
+            Serial.printf("CAN:   0x%02X %s\n", pid, pid_name(pid));
+    }
+    Serial.println("CAN: supported PID scan done");
 }
 
 static void can_handle_rx(const twai_message_t *msg)
@@ -71,6 +130,23 @@ static void can_handle_rx(const twai_message_t *msg)
 
     if (msg->data[1] != 0x41)
         return;
+
+    /* supported-PID bitmap responses: PID 0x00/0x20/0x40/0x60, 4 data bytes */
+    if (msg->data[2] == 0x00 || msg->data[2] == 0x20 ||
+        msg->data[2] == 0x40 || msg->data[2] == 0x60)
+    {
+        if (msg->data_length_code >= 7)
+        {
+            int group = msg->data[2] / 32;
+            memcpy(g_supported[group], &msg->data[3], 4);
+            g_sup_got[group] = true;
+
+            /* log once group 0x00 is in (0x00 is always supported) */
+            if (g_sup_got[0] && !g_sup_logged)
+                can_log_supported();
+        }
+        return;
+    }
 
     switch (msg->data[2])
     {
@@ -173,6 +249,8 @@ static void can_task(void *arg)
     uint8_t idx = 0;
     uint32_t last_req = 0;
     uint32_t last_dtc = 0;
+    uint32_t last_sup = 0;
+    uint8_t sup_idx = 0;
 
     for (;;)
     {
@@ -188,6 +266,14 @@ static void can_task(void *arg)
         {
             can_send_dtc();
             last_dtc = millis();
+        }
+
+        /* probe supported-PID bitmaps: 0x00/0x20/0x40/0x60 every 2s */
+        if (!g_sup_logged && (millis() - last_sup) >= 2000)
+        {
+            can_send_pid(sup_idx * 32);
+            last_sup = millis();
+            sup_idx = (sup_idx + 1) % 4;
         }
 
         twai_message_t msg;
