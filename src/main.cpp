@@ -15,7 +15,7 @@ static void hud_timer_cb(lv_timer_t *timer)
 
     if (ok)
         ui_update(can.speed, can.coolant_c, can.rpm, can.load_pct,
-                  can.oil_c, can.throttle_pct, can.batt_mv);
+                  can.iat_c, can.throttle_pct, can.batt_mv);
     else
         ui_update(0, 0, 0, 0, 0, 0, 0);
     ui_set_dtc(can.dtc_count, can.dtc_codes);

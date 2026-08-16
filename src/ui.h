@@ -21,7 +21,7 @@ typedef struct
 
 void ui_init(void);
 void ui_update(int speed_kmh, int coolant_c, int rpm, int load_pct,
-               int oil_c, int throttle_pct, int batt_mv);
+               int iat_c, int throttle_pct, int batt_mv);
 void ui_set_status(const ui_status_t *st);
 void ui_set_can_status(bool ok);
 void ui_set_dtc(uint8_t count, const uint16_t *codes);

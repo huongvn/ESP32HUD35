@@ -18,7 +18,7 @@ typedef struct
     uint8_t speed;       /* km/h */
     int coolant_c;       /* coolant temperature degC, -40..215 */
     uint8_t load_pct;    /* engine load % */
-    int oil_c;           /* engine oil temperature degC */
+    int iat_c;           /* intake air temperature degC */
     uint16_t maf_gs;     /* MAF g/s * 100 */
     uint8_t throttle_pct;/* throttle position % */
     uint8_t fuel_pct;    /* fuel level % */

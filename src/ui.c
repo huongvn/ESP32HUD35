@@ -24,7 +24,7 @@ static lv_obj_t *clock_label;
 static lv_obj_t *spd_label;
 static lv_obj_t *coolant_arc, *coolant_val, *coolant_unit;
 static lv_obj_t *batt_body, *batt_fill, *batt_nub, *batt_val, *batt_unit;
-static lv_obj_t *rpm_val, *load_val, *oil_val, *thr_val;
+static lv_obj_t *rpm_val, *load_val, *iat_val, *thr_val;
 static lv_obj_t *wifi_label;
 static lv_obj_t *dtc_label;
 
@@ -220,7 +220,7 @@ void ui_init(void)
     /* ============ ZONE 3: secondary params ============ */
     sub_readout(40, "RPM", &rpm_val);
     sub_readout(120, "LOAD", &load_val);
-    sub_readout(200, "OIL", &oil_val);
+    sub_readout(200, "IAT", &iat_val);
     sub_readout(280, "THR", &thr_val);
     divider(Z3_END - 2);
 
@@ -241,7 +241,7 @@ void ui_init(void)
 }
 
 void ui_update(int speed_kmh, int coolant_c, int rpm, int load_pct,
-               int oil_c, int throttle_pct, int batt_mv)
+               int iat_c, int throttle_pct, int batt_mv)
 {
     /* ZONE 1 */
     lv_label_set_text_fmt(spd_label, "%d km/h", speed_kmh);
@@ -277,7 +277,7 @@ void ui_update(int speed_kmh, int coolant_c, int rpm, int load_pct,
     /* ZONE 3 */
     lv_label_set_text_fmt(rpm_val, "%u", rpm);
     lv_label_set_text_fmt(load_val, "%d%%", load_pct);
-    lv_label_set_text_fmt(oil_val, "%dC", oil_c);
+    lv_label_set_text_fmt(iat_val, "%dC", iat_c);
     lv_label_set_text_fmt(thr_val, "%d%%", throttle_pct);
 
     /* Background warnings (priority: overheat > low battery > normal) */
