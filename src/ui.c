@@ -288,12 +288,9 @@ void ui_update(int speed_kmh, int coolant_c, int rpm, int load_pct,
     lv_label_set_text_fmt(iat_val, "%d C", iat_c);
     lv_label_set_text_fmt(thr_val, "%d%%", throttle_pct);
 
-    /* Background warnings (priority: overheat > low battery > cold IAT > normal) */
+    /* Background warnings (priority: overheat > low battery > normal) */
     bool blink = ((lv_tick_get() / 250) % 2) == 0;
-    bool cold = (iat_c > 0 && iat_c < 35);
-    if (cold)
-        lv_obj_set_style_bg_color(scr_main, blink ? lv_color_hex(0xD9C100) : COL_BG, 0);
-    else if (coolant_c > 100)
+    if (coolant_c > 100)
         lv_obj_set_style_bg_color(scr_main, blink ? lv_color_hex(0xE52B2B) : COL_BG, 0);
     else if (batt_low)
         lv_obj_set_style_bg_color(scr_main, blink ? lv_color_hex(0xD9C100) : COL_BG, 0);
