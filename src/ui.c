@@ -27,6 +27,7 @@ static lv_obj_t *batt_body, *batt_fill, *batt_nub, *batt_val, *batt_unit;
 static lv_obj_t *rpm_val, *load_val, *iat_val, *thr_val;
 static lv_obj_t *wifi_label;
 static lv_obj_t *dtc_label;
+static lv_obj_t *scan_label;
 
 #define COL_YELLOW lv_color_hex(0xD9C100)
 
@@ -237,6 +238,13 @@ void ui_init(void)
     lv_obj_set_style_text_align(dtc_label, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_align(dtc_label, LV_ALIGN_BOTTOM_RIGHT, -12, -10);
     lv_label_set_text(dtc_label, "");
+
+    scan_label = lv_label_create(scr_main);
+    lv_obj_set_style_text_font(scan_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(scan_label, COL_YELLOW, 0);
+    lv_obj_align(scan_label, LV_ALIGN_BOTTOM_RIGHT, -12, 30);
+    lv_label_set_text(scan_label, "");
+
     divider(Z4_END - 2);
 }
 
@@ -346,4 +354,12 @@ void ui_set_dtc(uint8_t count, const uint16_t *codes)
         pos += snprintf(buf + pos, sizeof(buf) - pos, "%s%03X  ", letter, num);
     }
     lv_label_set_text(dtc_label, buf);
+}
+
+void ui_set_scanning(bool scanning)
+{
+    if (scanning)
+        lv_label_set_text(scan_label, "SCAN");
+    else
+        lv_label_set_text(scan_label, "");
 }

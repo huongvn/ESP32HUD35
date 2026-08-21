@@ -347,3 +347,8 @@ void can_module_get_debug(uint32_t *rx, int *state, uint32_t *tx_fail, uint32_t 
     if (bus_err)
         *bus_err = g_bus_err;
 }
+
+bool can_module_is_scanning(void)
+{
+    return !g_sup_logged;
+}

@@ -12,6 +12,7 @@ static void hud_timer_cb(lv_timer_t *timer)
     can_data_t can;
     bool ok = can_module_get(&can);
     ui_set_can_status(ok);
+    ui_set_scanning(can_module_is_scanning());
 
     if (ok)
         ui_update(can.speed, can.coolant_c, can.rpm, can.load_pct,

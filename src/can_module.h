@@ -30,6 +30,7 @@ typedef struct
 void can_module_init(void);
 bool can_module_get(can_data_t *out);
 void can_module_get_debug(uint32_t *rx, int *state, uint32_t *tx_fail, uint32_t *bus_err);
+bool can_module_is_scanning(void);
 
 #ifdef __cplusplus
 }
