@@ -242,10 +242,11 @@ static void can_send_dtc(void)
 static void can_task(void *arg)
 {
     (void)arg;
-    uint8_t pid_seq[] = {PID_ENGINE_COOLANT, PID_ENGINE_RPM, PID_ENGINE_RPM,
-                         PID_VEHICLE_SPEED, PID_ENGINE_RPM, PID_ENGINE_LOAD,
-                         PID_INTAKE_AIR, PID_MAF, PID_THROTTLE, PID_FUEL_LEVEL,
-                         PID_BATTERY_VOLTAGE, PID_ENGINE_RPM, PID_VEHICLE_SPEED};
+    static const uint8_t pid_seq[] = {
+        PID_ENGINE_COOLANT, PID_ENGINE_RPM, PID_VEHICLE_SPEED,
+        PID_ENGINE_LOAD, PID_INTAKE_AIR, PID_MAF,
+        PID_THROTTLE, PID_FUEL_LEVEL, PID_BATTERY_VOLTAGE
+    };
     uint8_t idx = 0;
     uint32_t last_req = 0;
     uint32_t last_dtc = 0;

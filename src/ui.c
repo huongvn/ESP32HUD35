@@ -277,12 +277,15 @@ void ui_update(int speed_kmh, int coolant_c, int rpm, int load_pct,
     /* ZONE 3 */
     lv_label_set_text_fmt(rpm_val, "%u", rpm);
     lv_label_set_text_fmt(load_val, "%d%%", load_pct);
-    lv_label_set_text_fmt(iat_val, "%dC", iat_c);
+    lv_label_set_text_fmt(iat_val, "%d C", iat_c);
     lv_label_set_text_fmt(thr_val, "%d%%", throttle_pct);
 
-    /* Background warnings (priority: overheat > low battery > normal) */
+    /* Background warnings (priority: overheat > low battery > cold IAT > normal) */
     bool blink = ((lv_tick_get() / 250) % 2) == 0;
-    if (coolant_c > 100)
+    bool cold = (iat_c > 0 && iat_c < 35);
+    if (cold)
+        lv_obj_set_style_bg_color(scr_main, blink ? lv_color_hex(0xD9C100) : COL_BG, 0);
+    else if (coolant_c > 100)
         lv_obj_set_style_bg_color(scr_main, blink ? lv_color_hex(0xE52B2B) : COL_BG, 0);
     else if (batt_low)
         lv_obj_set_style_bg_color(scr_main, blink ? lv_color_hex(0xD9C100) : COL_BG, 0);
@@ -297,9 +300,12 @@ void ui_set_status(const ui_status_t *st)
     else
         lv_label_set_text(clock_label, "--:--");
 
+    static char ssid_buf[33];
     if (st->wifi_connected && st->wifi_ssid)
     {
-        lv_label_set_text_fmt(wifi_label, LV_SYMBOL_WIFI " %s", st->wifi_ssid);
+        strncpy(ssid_buf, st->wifi_ssid, sizeof(ssid_buf) - 1);
+        ssid_buf[sizeof(ssid_buf) - 1] = '\0';
+        lv_label_set_text_fmt(wifi_label, LV_SYMBOL_WIFI " %s", ssid_buf);
         lv_obj_set_style_text_color(wifi_label, COL_BLUE, 0);
     }
     else
